@@ -17,34 +17,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(START_MESSAGE)
 
 
-async def add_todo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # New format: /add Important task | HIGH | 2024-01-01 12:00 | 30
-    try:
-        text = update.message.text.replace('/add ', '')
-        parts = text.split('|')
-        todo_text = parts[0].strip()
-        importance = Importance[parts[1].strip()]
-        deadline = datetime.strptime(parts[2].strip(), '%Y-%m-%d %H:%M')
-        reminder_minutes = int(parts[3].strip()) if len(parts) > 3 else 60
-        recurrence = RecurrencePattern[parts[4].strip()] if len(parts) > 4 else None
-
-        session = Session()
-        todo = Todo(
-            user_id=update.effective_user.id,
-            text=todo_text,
-            importance=importance,
-            deadline=deadline,
-            reminder_minutes=reminder_minutes,
-            is_recurring=bool(recurrence),
-            recurrence_pattern=recurrence,
-            parent_id=None,
+async def display_todos(update: Update, todos: list, header: str = None):
+    if not todos:
+        await update.message.reply_text(NO_TODOS_MESSAGE)
+        return
+        
+    if header:
+        await update.message.reply_text(header)
+    
+    for todo in todos:
+        text = TODO_ITEM_TEMPLATE.format(
+            id=todo.id,
+            text=todo.text,
+            importance=todo.importance.name,
+            deadline=todo.deadline.strftime('%Y-%m-%d %H:%M'),
+            reminder=todo.reminder_minutes
         )
-        session.add(todo)
-        session.commit()
-        session.close()
-        await update.message.reply_text(TODO_ADDED_SUCCESS.format(minutes=reminder_minutes, recurrence=recurrence.value if recurrence else "No"))
-    except Exception as e:
-        await update.message.reply_text(ADD_HELP_MESSAGE)
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Done", callback_data=f"done_{todo.id}"),
+                InlineKeyboardButton("❌ Close", callback_data=f"close_{todo.id}"),
+                InlineKeyboardButton("⚠️ Failed", callback_data=f"fail_{todo.id}")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(text, reply_markup=reply_markup)
 
 
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE):
@@ -75,32 +74,33 @@ async def list_todos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     todos = session.query(Todo).filter_by(
         user_id=update.effective_user.id,
         status=TodoStatus.ACTIVE
-    ).all()
+    ).order_by(Todo.importance.desc(), Todo.deadline.asc()).all()
     
-    if not todos:
-        await update.message.reply_text(NO_TODOS_MESSAGE)
-        return
+    await display_todos(update, todos)
+    session.close()
 
-    for todo in todos:
-        text = TODO_ITEM_TEMPLATE.format(
-            id=todo.id,
-            text=todo.text,
-            importance=todo.importance.name,
-            deadline=todo.deadline.strftime('%Y-%m-%d %H:%M'),
-            reminder=todo.reminder_minutes
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Done", callback_data=f"done_{todo.id}"),
-                InlineKeyboardButton("❌ Close", callback_data=f"closed_{todo.id}"),
-                InlineKeyboardButton("⚠️ Failed", callback_data=f"failed_{todo.id}")
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(text, reply_markup=reply_markup)
+
+async def show_smart_list(update: Update, context: ContextTypes.DEFAULT_TYPE, days: int = 0):
+    session = Session()
+    now = datetime.now()
     
+    if days == 0:
+        start_date = now.date()
+        end_date = start_date + timedelta(days=1)
+        title = "📝 Today's tasks"
+    elif days == 7:
+        start_date = now.date()
+        end_date = start_date + timedelta(days=7)
+        title = "📅 This week's tasks"
+    
+    todos = session.query(Todo).filter(
+        Todo.user_id == update.effective_user.id,
+        Todo.status == TodoStatus.ACTIVE,
+        Todo.deadline >= now,
+        Todo.deadline <= end_date
+    ).order_by(Todo.importance.desc(), Todo.deadline.asc()).all()
+    
+    await display_todos(update, todos, title)
     session.close()
 
 
@@ -261,7 +261,9 @@ async def setup_commands(application):
         ("start", "Start the bot and see available commands"),
         ("add", "Add new todo (format: text | importance | YYYY-MM-DD HH:MM | minutes_before)"),
         ("list", "Show all active todos"),
-        ("history", "View completed tasks with filters")
+        ("history", "View completed tasks with filters"),
+        ("today", "Show today's tasks"),
+        ("week", "Show this week's tasks"),
         # ("done|close|fail", "Mark todo state (format: /done <todo_id>)"),
     ]
     await application.bot.set_my_commands(commands)
@@ -272,12 +274,13 @@ def main():
     
     # Command handlers
     app.add_handler(CommandHandler("start", start))
-    # app.add_handler(CommandHandler("add", add_todo))
     app.add_handler(CommandHandler("list", list_todos))
     app.add_handler(CommandHandler("done", partial(change_todo_state, new_state=TodoStatus.DONE)))
     app.add_handler(CommandHandler("close", partial(change_todo_state, new_state=TodoStatus.CLOSED)))
     app.add_handler(CommandHandler("fail", partial(change_todo_state, new_state=TodoStatus.FAILED)))
     app.add_handler(CommandHandler("history", history))
+    app.add_handler(CommandHandler("today", partial(show_smart_list, days=0)))
+    app.add_handler(CommandHandler("week", partial(show_smart_list, days=7)))
     
     # Callback handlers with patterns
     app.add_handler(CallbackQueryHandler(handle_history_filter, pattern="^history_"))

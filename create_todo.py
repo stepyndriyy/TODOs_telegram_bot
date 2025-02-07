@@ -58,7 +58,6 @@ async def get_deadline_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         ["09:00", "12:00", "15:00"],
         ["18:00", "20:00", "22:00"],
-        ["Custom time"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
     await update.message.reply_text("Select time:", reply_markup=reply_markup)
@@ -67,10 +66,7 @@ async def get_deadline_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def process_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    if text == "Custom time":
-        await update.message.reply_text("Enter time (HH:MM):")
-        return TIME
-    
+
     try:
         if ':' in text:  # Custom time input
             hour, minute = map(int, text.split(':'))

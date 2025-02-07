@@ -6,9 +6,8 @@ Also it will remind you about your tasks every day.
 
 Available commands:
 📝 /add - Add new TODO
-📋 /list - Show and state TODOs
+📋 /list /today /week - Show and state TODOs
 🔍 /history - View completed tasks with filter
-
 ✅ /done|/close|/fail - Mark TODO state
 """
 
