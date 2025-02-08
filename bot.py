@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import datetime, timedelta, time
 from functools import partial
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -6,7 +7,7 @@ from sqlalchemy import func
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, CallbackQueryHandler
 from models import Session, Todo, Importance, TodoStatus, RecurrencePattern
 from config import BOT_TOKEN
-from messages import START_MESSAGE, ADD_HELP_MESSAGE, NO_TODOS_MESSAGE, TODO_LIST_HEADER, TODO_ITEM_TEMPLATE, TODO_ADDED_SUCCESS, TODO_DONE_SUCCESS, TODO_NOT_FOUND, DONE_HELP_MESSAGE, REMINDER_MESSAGE
+from messages import START_MESSAGE, ADD_HELP_MESSAGE, NO_TODOS_MESSAGE, TODO_LIST_HEADER, TODO_ITEM_TEMPLATE, TODO_ADDED_SUCCESS, TODO_DONE_SUCCESS, TODO_NOT_FOUND, DONE_HELP_MESSAGE, REMINDER_MESSAGE, REMINDER_OVERDUE_MESSAGE
 from utils import calculate_next_deadline
 from create_todo import create_todo_conversation_handler
 
@@ -39,10 +40,12 @@ async def display_todos(update: Update, todos: list, header: str = None):
                 InlineKeyboardButton("✅ Done", callback_data=f"done_{todo.id}"),
                 InlineKeyboardButton("❌ Close", callback_data=f"close_{todo.id}"),
                 InlineKeyboardButton("⚠️ Failed", callback_data=f"fail_{todo.id}")
+            ],
+            [
+                InlineKeyboardButton("⏰ Postpone", callback_data=f"delay_{todo.id}")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
         await update.message.reply_text(text, reply_markup=reply_markup)
 
 
@@ -61,9 +64,26 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE):
         if minutes_until_deadline <= todo.reminder_minutes:
             await context.bot.send_message(
                 chat_id=todo.user_id,
-                text=REMINDER_MESSAGE.format(text=todo.text, minutes=int(minutes_until_deadline))
+                text=REMINDER_MESSAGE.format(text=todo.text, minutes=math.ceil(minutes_until_deadline))
             )
             todo.reminder_sent = True
+
+    # Post-deadline notifications
+    overdue_todos = session.query(Todo).filter(
+        Todo.deadline <= now,
+        Todo.status == TodoStatus.ACTIVE
+    ).all()
+
+    for todo in overdue_todos:
+        time_diff = now - todo.deadline
+        minutes_past_deadline = time_diff.total_seconds() / 60
+        
+        # Notify at deadline and every 30 minutes after
+        if minutes_past_deadline == 0 or minutes_past_deadline % 30 == 0:
+            await context.bot.send_message(
+                chat_id=todo.user_id,
+                text=REMINDER_OVERDUE_MESSAGE.format(text=todo.text, minutes=math.ceil(minutes_past_deadline))
+            )
 
     session.commit()
     session.close()
@@ -106,39 +126,60 @@ async def show_smart_list(update: Update, context: ContextTypes.DEFAULT_TYPE, da
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    action, todo_id = query.data.split('_')
+    action, todo_id = query.data.split('_')[:2]
     
     session = Session()
     todo = session.query(Todo).filter_by(
         id=int(todo_id),
         user_id=update.effective_user.id
     ).first()
+    
     print(action)
-    print(todo.status)
     print(todo_id)
     if todo:
-        todo.status = TodoStatus[action.upper()]
-        print(todo.status)
-
-        # Create next instance if it's a recurring todo
-        if todo.is_recurring and action == 'done':
-            next_deadline = calculate_next_deadline(todo)
-            new_todo = Todo(
-                user_id=todo.user_id,
-                text=todo.text,
-                importance=todo.importance,
-                deadline=next_deadline,
-                reminder_minutes=todo.reminder_minutes,
-                is_recurring=True,
-                recurrence_pattern=todo.recurrence_pattern,
-                parent_id=todo.id
-            )
-            session.add(new_todo)
-
-        session.commit()
-        await query.answer(f"Todo marked as {action}")
-        await query.edit_message_reply_markup(reply_markup=None)
-        await query.edit_message_text(f"Todo: '{todo.text}' marked as {action}")
+        if action == 'delay':
+            keyboard = [
+                [
+                    InlineKeyboardButton("Tomorrow", callback_data=f"postpone_{todo_id}_tomorrow"),
+                    InlineKeyboardButton("Custom date", callback_data=f"postpone_{todo_id}_custom")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_reply_markup(reply_markup=reply_markup)
+        elif action == 'postpone':
+            delay_type = query.data.split('_')[2]
+            print(todo_id)
+            print(delay_type)
+            if delay_type == 'tomorrow':
+                tomorrow = todo.deadline + timedelta(days=1)
+                todo.deadline = tomorrow
+                # todo.deadline = tomorrow.replace(hour=todo.deadline.hour, minute=todo.deadline.minute)
+                todo.reminder_sent = False
+                session.commit()
+                await query.edit_message_reply_markup(reply_markup=None)
+                await query.edit_message_text(f"Todo: '{todo.text}' postponed to tomorrow")
+            elif delay_type == 'custom':
+                context.user_data['postpone_todo_id'] = todo_id
+                await query.edit_message_text("Enter new date and time (YYYY-MM-DD HH:MM):")
+        else:
+            todo.status = TodoStatus[action.upper()]
+            if todo.is_recurring and action == 'done':
+                next_deadline = calculate_next_deadline(todo)
+                new_todo = Todo(
+                    user_id=todo.user_id,
+                    text=todo.text,
+                    importance=todo.importance,
+                    deadline=next_deadline,
+                    reminder_minutes=todo.reminder_minutes,
+                    is_recurring=True,
+                    recurrence_pattern=todo.recurrence_pattern,
+                    parent_id=todo.id
+                )
+                session.add(new_todo)
+            session.commit()
+            await query.answer(f"Todo marked as {action}")
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.edit_message_text(f"Todo: '{todo.text}' marked as {action}")
     
     session.close()
 
@@ -284,7 +325,7 @@ def main():
     
     # Callback handlers with patterns
     app.add_handler(CallbackQueryHandler(handle_history_filter, pattern="^history_"))
-    app.add_handler(CallbackQueryHandler(button_handler, pattern="^(done|closed|failed)_"))
+    app.add_handler(CallbackQueryHandler(button_handler, pattern="^(done|closed|failed|delay|postpone)_"))
     
     # Conversation handler
     app.add_handler(create_todo_conversation_handler())

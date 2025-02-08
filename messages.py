@@ -52,6 +52,7 @@ DONE_HELP_MESSAGE = "ℹ️ Please use format: /done <todo_id>"
 
 # Reminder message
 REMINDER_MESSAGE = "⚠️ Reminder: '{text}' is due in {minutes} minutes!"
+REMINDER_OVERDUE_MESSAGE = "⚠️ OVERDUE: '{text}' is {minutes} minutes past deadline!"
 
 
 #add messages
