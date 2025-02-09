@@ -79,7 +79,7 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE):
         minutes_past_deadline = time_diff.total_seconds() / 60
         
         # Notify at deadline and every 30 minutes after
-        if minutes_past_deadline == 0 or minutes_past_deadline % 30 == 0:
+        if (0 <= minutes_past_deadline < 1) or (abs(minutes_past_deadline % 30) < 1):
             await context.bot.send_message(
                 chat_id=todo.user_id,
                 text=REMINDER_OVERDUE_MESSAGE.format(text=todo.text, minutes=math.ceil(minutes_past_deadline))
@@ -116,7 +116,6 @@ async def show_smart_list(update: Update, context: ContextTypes.DEFAULT_TYPE, da
     todos = session.query(Todo).filter(
         Todo.user_id == update.effective_user.id,
         Todo.status == TodoStatus.ACTIVE,
-        Todo.deadline >= now,
         Todo.deadline <= end_date
     ).order_by(Todo.importance.desc(), Todo.deadline.asc()).all()
     
