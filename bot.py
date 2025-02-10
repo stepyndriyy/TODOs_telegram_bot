@@ -10,6 +10,8 @@ from config import BOT_TOKEN
 from messages import START_MESSAGE, ADD_HELP_MESSAGE, NO_TODOS_MESSAGE, TODO_LIST_HEADER, TODO_ITEM_TEMPLATE, TODO_ADDED_SUCCESS, TODO_DONE_SUCCESS, TODO_NOT_FOUND, DONE_HELP_MESSAGE, REMINDER_MESSAGE, REMINDER_OVERDUE_MESSAGE
 from utils import calculate_next_deadline
 from create_todo import create_todo_conversation_handler
+from list_handler import TodoListHandler
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -311,21 +313,26 @@ async def setup_commands(application):
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    # Initialize list handler
+    list_handler = TodoListHandler()
     
     # Command handlers
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("list", list_todos))
     app.add_handler(CommandHandler("done", partial(change_todo_state, new_state=TodoStatus.DONE)))
     app.add_handler(CommandHandler("close", partial(change_todo_state, new_state=TodoStatus.CLOSED)))
     app.add_handler(CommandHandler("fail", partial(change_todo_state, new_state=TodoStatus.FAILED)))
     app.add_handler(CommandHandler("history", history))
-    app.add_handler(CommandHandler("today", partial(show_smart_list, days=0)))
-    app.add_handler(CommandHandler("week", partial(show_smart_list, days=7)))
+    app.add_handler(CommandHandler("list", list_handler.list_tasks))
+    app.add_handler(CommandHandler("today", partial(list_handler.list_tasks, days=0)))
+    app.add_handler(CommandHandler("week", partial(list_handler.list_tasks, days=7)))
+
     
     # Callback handlers with patterns
     app.add_handler(CallbackQueryHandler(handle_history_filter, pattern="^history_"))
     app.add_handler(CallbackQueryHandler(button_handler, pattern="^(done|closed|failed|delay|postpone)_"))
-    
+    app.add_handler(CallbackQueryHandler(list_handler.show_details, pattern="^details_"))
+
     # Conversation handler
     app.add_handler(create_todo_conversation_handler())
 
