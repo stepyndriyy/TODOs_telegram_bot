@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, filt
 from models import Session, Todo, Importance, RecurrencePattern
 from messages import TODO_CREEATION_TITLE, TODO_CRETATION_IMPORTANCE, TODO_CRETATION_DEADLINE, TODO_CRETATION_DEADLINE_ERROR, TODO_CRETATION_REMINDER, TODO_CRETATION_RECURRENCE, TODO_ADDED_SUCCESS
 from utils import calculate_next_deadline
+from keyboard import date_selection_keyboard, time_selection_keyboard, reminder_keyboard, recurrence_keyboard
 
 
 TITLE, IMPORTANCE, DATE, TIME, REMINDER, RECURRENCE = range(6)
@@ -26,10 +27,7 @@ async def get_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_importance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['importance'] = update.message.text
-    keyboard = [
-        ["Today", "Tomorrow"],
-        ["In 2 days", "In 3 days"],
-    ]
+    keyboard = date_selection_keyboard()
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
     await update.message.reply_text(TODO_CRETATION_DEADLINE, reply_markup=reply_markup)
     return DATE
@@ -55,10 +53,7 @@ async def get_deadline_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return DATE
     
     context.user_data['date'] = date
-    keyboard = [
-        ["09:00", "12:00", "15:00"],
-        ["18:00", "20:00", "22:00"],
-    ]
+    keyboard = time_selection_keyboard()
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
     await update.message.reply_text("Select time:", reply_markup=reply_markup)
     return TIME
@@ -77,9 +72,7 @@ async def process_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         deadline = date.replace(hour=hour, minute=minute)
         context.user_data['deadline'] = deadline
         
-        keyboard = [
-            ["15", "30", "60"],
-        ]
+        keyboard = reminder_keyboard()
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
         await update.message.reply_text(TODO_CRETATION_REMINDER, reply_markup=reply_markup)
         return REMINDER
@@ -90,10 +83,7 @@ async def process_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['reminder'] = int(update.message.text)
-    keyboard = [
-        ["NO"],
-        [pattern.name for pattern in RecurrencePattern]
-    ]
+    keyboard = recurrence_keyboard()
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
     await update.message.reply_text(TODO_CRETATION_RECURRENCE, reply_markup=reply_markup)
     return RECURRENCE

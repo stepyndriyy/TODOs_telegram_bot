@@ -3,6 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from models import Session, Todo, TodoStatus
 from sqlalchemy import func
+from keyboard import details_keyboard_buttons, reminder_action_buttons
 
 class TodoListHandler:
     def __init__(self):
@@ -23,12 +24,7 @@ class TodoListHandler:
                 deadline=todo.deadline.strftime('%Y-%m-%d %H:%M')
             )
             
-            keyboard = [
-                [
-                    InlineKeyboardButton("✅ Done", callback_data=f"done_{todo.id}"),
-                    InlineKeyboardButton("ℹ️ Details", callback_data=f"details_{todo.id}")
-                ]
-            ]
+            keyboard = reminder_action_buttons(todo.id)
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(text, reply_markup=reply_markup)
 
@@ -75,16 +71,7 @@ class TodoListHandler:
                 f"⚡ Reminder: {todo.reminder_minutes} minutes before"
             )
             
-            keyboard = [
-                [
-                    InlineKeyboardButton("✅ Done", callback_data=f"done_{todo.id}"),
-                    InlineKeyboardButton("❌ Close", callback_data=f"close_{todo.id}"),
-                    InlineKeyboardButton("⚠️ Failed", callback_data=f"fail_{todo.id}")
-                ],
-                [
-                    InlineKeyboardButton("⏰ Postpone", callback_data=f"delay_{todo.id}")
-                ]
-            ]
+            keyboard = details_keyboard_buttons(todo_id)
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text(detailed_text, reply_markup=reply_markup)
         

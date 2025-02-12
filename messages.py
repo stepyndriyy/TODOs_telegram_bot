@@ -4,6 +4,9 @@ START_MESSAGE = """
 It is a simple bot to manage your TODOs. You can create recursive tasks amd set reminders.
 Also it will remind you about your tasks every day.
 
+You can just write "сегодня в 15:30 купить молоко" and bot will create task for you.
+""
+
 Available commands:
 📝 /add - Add new TODO
 📋 /list /today /week - Show and state TODOs
