@@ -144,7 +144,7 @@ class TodoParser:
                 elif unit_normal == 'месяц':
                     pattern = RecurrencePattern.MONTHLY
                     
-                return True, pattern, re.sub(pattern, '', text).strip()
+                return True, base_pattern, re.sub(pattern, '', text).strip()
         
         return False, None, text
 
